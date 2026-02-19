@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NewProj</title>
+  <link rel="stylesheet" href="tv.css">
+  <style>
+    body {
+      background: #0a0806;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    body.loaded {
+      overflow: hidden;
+    }
+
+    /* ── Loading Screen ── */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.8s ease, visibility 0.8s ease;
+    }
+
+    #loading-screen.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #loading-screen svg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-height: 90vh;
+      max-width: 90vw;
+    }
+
+    /* ── Main Content ── */
+    #main-content {
+      opacity: 0;
+      transition: opacity 1.2s ease 0.3s;
+      min-height: 100vh;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    #main-content.visible {
+      opacity: 1;
+    }
+
+    /* ── AMBIENT LAYER ── */
+    #ambient-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .global-scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 2px,
+        rgba(0, 0, 0, 0.06) 2px,
+        rgba(0, 0, 0, 0.06) 4px
+      );
+    }
+
+    .global-vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 49;
+      pointer-events: none;
+      background: radial-gradient(
+        ellipse 70% 70% at 50% 50%,
+        transparent 0%,
+        rgba(0, 0, 0, 0.5) 100%
+      );
+    }
+
+    .ambient-haze {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 40% 50% at 50% 50%, rgba(0, 255, 65, 0.015) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 30% 70%, rgba(0, 180, 80, 0.01) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 60% at 80% 30%, rgba(0, 200, 100, 0.008) 0%, transparent 60%);
+      animation: hazeShift 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes hazeShift {
+      0%   { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    .crt-flicker {
+      position: fixed;
+      inset: 0;
+      z-index: 48;
+      pointer-events: none;
+      animation: flicker 0.15s infinite;
+      background: transparent;
+    }
+
+    @keyframes flicker {
+      0%   { opacity: 0.97; }
+      50%  { opacity: 1; }
+      100% { opacity: 0.98; }
+    }
+
+    /* ── DEEPDIVE OVERLAY CANVAS (inside tv-screen) ── */
+    #deepdive-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      border-radius: 8px;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+    }
+
+    #deepdive-canvas.active {
+      opacity: 1;
+    }
+
+    #donut-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 11;
+      border-radius: 8px;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+    }
+
+    #donut-canvas.active {
+      opacity: 1;
+    }
+
+    /* ── CINEMATIC ZOOM ── */
+    .tv-wrap.cinematic-zoom {
+      animation: none !important;
+      filter: none !important;
+    }
+
+    .tv-wrap.cinematic-ready {
+      transition: transform 2.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .tv-wrap.cinematic-zoom-out {
+      transition: transform 2.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Fade out ambient during zoom */
+    .ambient-fade-out {
+      transition: opacity 1.5s ease !important;
+      opacity: 0 !important;
+    }
+
+    .ambient-fade-in {
+      transition: opacity 2s ease !important;
+      opacity: 1 !important;
+    }
+
+    /* Fade controls/hints during cinematic */
+    .cinematic-hide {
+      transition: opacity 0.6s ease !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    .cinematic-show {
+      transition: opacity 0.8s ease 0.5s !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+
+    /* Black cinematic bars for immersion during zoom */
+    .cinematic-bars {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 0;
+      background: #000;
+      z-index: 60;
+      transition: height 2s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+    }
+
+    .cinematic-bars.top { top: 0; }
+    .cinematic-bars.bottom { bottom: 0; }
+
+    .cinematic-bars.active {
+      height: 8vh;
+    }
+
+    .cinematic-bars.retract {
+      transition: height 2s cubic-bezier(0.22, 1, 0.36, 1);
+      height: 0;
+    }
+
+    /* ── CA DISPLAY ── */
+    .ca-display {
+      font-family: 'VT323', 'Share Tech Mono', monospace;
+      font-size: clamp(14px, 1.8vw, 24px);
+      color: rgba(0, 255, 65, 0.7);
+      text-align: center;
+      margin-bottom: 18px;
+      letter-spacing: 0.05em;
+      min-height: 1.5em;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      text-shadow: 0 0 8px rgba(0, 255, 65, 0.3);
+      position: relative;
+      z-index: 10;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .ca-display:hover .ca-address {
+      text-shadow: 0 0 12px rgba(0, 255, 65, 0.6);
+      color: rgba(0, 255, 65, 0.9);
+    }
+
+    .ca-copied-toast {
+      position: absolute;
+      top: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'VT323', monospace;
+      font-size: 14px;
+      color: rgba(0, 255, 65, 0.9);
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(0, 255, 65, 0.3);
+      padding: 2px 12px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.3s ease, top 0.3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .ca-copied-toast.show {
+      opacity: 1;
+      top: -32px;
+    }
+
+    .ca-display.visible {
+      opacity: 1;
+    }
+
+    .ca-label {
+      color: rgba(0, 255, 65, 0.4);
+      margin-right: 4px;
+    }
+
+    .ca-address .ca-char {
+      display: inline-block;
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: none;
+    }
+
+    .ca-address .ca-char.landed {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.08s ease, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .ca-address .ca-char.scrambling {
+      opacity: 0.6;
+      transform: translateY(0);
+      color: rgba(0, 255, 65, 0.35);
+    }
+
+    .ca-cursor {
+      animation: cursorBlink 0.6s step-end infinite;
+      color: rgba(0, 255, 65, 0.8);
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* ── WIRE CANVAS ── */
+    #wire-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      cursor: none;
+      transition: opacity 1s ease;
+    }
+
+    #wire-canvas.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* ── TV OFF STATE ── */
+    .led-off {
+      background: #333 !important;
+      box-shadow: none !important;
+      animation: none !important;
+    }
+
+    /* ── CRT POWER ON ── */
+    .tv-screen.crt-power-on #screen {
+      animation: crtPowerOn 0.8s ease forwards;
+    }
+
+    @keyframes crtPowerOn {
+      0%   { transform: scaleY(0.005); filter: brightness(5) blur(2px); }
+      25%  { transform: scaleY(0.005); filter: brightness(3) blur(1px); }
+      35%  { transform: scaleY(1.1);   filter: brightness(2); }
+      50%  { transform: scaleY(0.95);  filter: brightness(1.5); }
+      70%  { transform: scaleY(1.03);  filter: brightness(1.2); }
+      85%  { transform: scaleY(0.99);  filter: brightness(1.05); }
+      100% { transform: scaleY(1);     filter: brightness(1); }
+    }
+
+    /* Outlet hint text */
+    .outlet-hint {
+      position: fixed;
+      z-index: 56;
+      font-family: 'VT323', monospace;
+      font-size: 16px;
+      letter-spacing: 0.15em;
+      color: rgba(0, 255, 65, 0.4);
+      pointer-events: none;
+      animation: hintPulse 2s ease-in-out infinite;
+      transition: opacity 0.5s ease;
+    }
+
+    .outlet-hint.hidden { opacity: 0 !important; animation: none; }
+
+    @keyframes hintPulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.7; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading Screen with Maze -->
+  <div id="loading-screen">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <defs>
+        <filter id="neon-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <g fill="none" stroke="#fff" stroke-width="1" stroke-linecap="square">
+        <path d="M 43.02 56.99 A 9.88 9.88 90 1 1 50.01 59.88 M 55.68 36.32 A 14.81 14.81 90 0 1 64.82 50.01 M 63.7 55.68 A 14.81 14.81 90 0 1 39.53 60.48 M 36.32 55.68 A 14.81 14.81 90 0 1 35.19 50.01 M 36.32 44.34 A 14.81 14.81 90 0 1 44.34 36.32 M 42.45 31.76 A 19.75 19.75 90 0 1 68.26 42.45 M 69.76 50.01 A 19.75 19.75 90 0 1 68.26 57.57 M 63.98 63.98 A 19.75 19.75 90 0 1 57.57 68.26 M 50.01 69.76 A 19.75 19.75 90 0 1 31.76 57.57 M 30.26 50.01 A 19.75 19.75 90 0 1 31.76 42.45 M 32.55 32.55 A 24.69 24.69 90 0 1 50.01 25.32 M 54.83 25.79 A 24.69 24.69 90 0 1 63.73 29.48 M 67.47 32.55 A 24.69 24.69 90 0 1 74.23 54.83 M 72.82 59.46 A 24.69 24.69 90 0 1 70.54 63.73 M 67.47 67.47 A 24.69 24.69 90 0 1 63.73 70.54 M 59.46 72.82 A 24.69 24.69 90 0 1 45.19 74.23 M 36.29 70.54 A 24.69 24.69 90 0 1 32.55 67.47 M 29.48 63.73 A 24.69 24.69 90 0 1 25.79 45.19 M 27.2 40.56 A 24.69 24.69 90 0 1 29.48 36.29 M 66.47 25.37 A 29.63 29.63 90 0 1 70.96 29.06 M 77.38 38.67 A 29.63 29.63 90 0 1 61.35 77.38 M 38.67 77.38 A 29.63 29.63 90 0 1 33.55 74.64 M 29.06 70.96 A 29.63 29.63 90 0 1 25.37 66.47 M 22.63 61.35 A 29.63 29.63 90 0 1 20.38 50.01 M 20.95 44.23 A 29.63 29.63 90 0 1 22.63 38.67 M 25.37 33.55 A 29.63 29.63 90 0 1 33.55 25.37 M 43.27 16.11 A 34.57 34.57 90 0 1 69.21 21.27 M 78.75 30.8 A 34.57 34.57 90 0 1 83.91 43.27 M 81.94 63.24 A 34.57 34.57 90 0 1 36.78 81.94 M 30.8 78.75 A 34.57 34.57 90 0 1 25.57 74.45 M 21.27 69.21 A 34.57 34.57 90 0 1 18.07 63.24 M 15.44 50.01 A 34.57 34.57 90 0 1 21.27 30.8 M 25.57 25.57 A 34.57 34.57 90 0 1 30.8 21.27 M 28.06 17.16 A 39.51 39.51 90 0 1 50.01 10.5 M 65.13 13.51 A 39.51 39.51 90 0 1 89.52 50.01 M 86.51 65.13 A 39.51 39.51 90 0 1 82.86 71.96 M 77.94 77.94 A 39.51 39.51 90 0 1 71.96 82.86 M 65.13 86.51 A 39.51 39.51 90 0 1 17.16 71.96 M 13.51 65.13 A 39.51 39.51 90 0 1 11.26 57.72 M 11.26 42.3 A 39.51 39.51 90 0 1 13.51 34.89 M 17.16 28.06 A 39.51 39.51 90 0 1 22.07 22.07 M 58.68 6.42 A 44.44 44.44 90 0 1 78.2 15.65 M 86.96 25.32 A 44.44 44.44 90 0 1 89.2 29.06 M 92.54 37.11 A 44.44 44.44 90 0 1 94.24 45.65 M 94.45 50.01 A 44.44 44.44 90 0 1 93.6 58.68 M 92.54 62.91 A 44.44 44.44 90 0 1 91.07 67.02 M 86.96 74.7 A 44.44 44.44 90 0 1 78.2 84.36 M 74.7 86.96 A 44.44 44.44 90 0 1 54.37 94.24 M 50.01 94.45 A 44.44 44.44 90 0 1 41.34 93.6 M 33 91.07 A 44.44 44.44 90 0 1 29.06 89.2 M 21.81 84.36 A 44.44 44.44 90 0 1 18.58 81.44 M 15.65 78.2 A 44.44 44.44 90 0 1 7.48 62.91 M 6.42 58.68 A 44.44 44.44 90 0 1 5.78 45.65 M 6.42 41.34 A 44.44 44.44 90 0 1 7.48 37.11 M 8.95 33 A 44.44 44.44 90 0 1 18.58 18.58 M 21.81 15.65 A 44.44 44.44 90 0 1 25.32 13.05 M 37.11 7.48 A 44.44 44.44 90 0 1 45.65 5.78 M 54.85 0.86 A 49.38 49.38 90 1 1 50.01 0.63 M 50.01 5.56 L 50.01 10.5 M 50.01 15.44 L 50.01 25.32 M 50.01 35.19 L 50.01 40.13 M 54.85 0.86 L 54.37 5.78 M 58.68 6.42 L 56.75 16.11 M 55.79 20.95 L 54.83 25.79 M 63.24 18.07 L 61.35 22.63 M 59.46 27.2 L 57.57 31.76 M 66.47 25.37 L 63.73 29.48 M 81.34 11.84 L 78.2 15.65 M 81.44 18.58 L 70.96 29.06 M 88.18 18.68 L 84.36 21.81 M 86.96 25.32 L 82.86 28.06 M 78.75 30.8 L 70.54 36.29 M 95.63 31.11 L 91.07 33 M 99.15 45.17 L 94.24 45.65 M 94.45 50.01 L 89.52 50.01 M 84.58 50.01 L 79.64 50.01 M 74.7 50.01 L 59.88 50.01 M 93.6 58.68 L 79.07 55.79 M 97.27 64.34 L 92.54 62.91 M 91.07 67.02 L 81.94 63.24 M 72.82 59.46 L 68.26 57.57 M 93.56 73.29 L 89.2 70.96 M 86.96 74.7 L 82.86 71.96 M 74.64 66.47 L 70.54 63.73 M 67.47 67.47 L 60.48 60.48 M 74.7 86.96 L 71.96 82.86 M 58.68 93.6 L 57.72 88.76 M 56.75 83.91 L 54.83 74.23 M 50.01 84.58 L 50.01 79.64 M 50.01 74.7 L 50.01 64.82 M 41.34 93.6 L 42.3 88.76 M 44.23 79.07 L 45.19 74.23 M 35.67 97.27 L 37.11 92.54 M 33 91.07 L 34.89 86.51 M 36.78 81.94 L 40.56 72.82 M 22.57 91.07 L 25.32 86.96 M 30.8 78.75 L 33.55 74.64 M 15.09 84.93 L 18.58 81.44 M 29.06 70.96 L 36.04 63.98 M 39.53 60.48 L 43.02 56.99 M 13.05 74.7 L 17.16 71.96 M 21.27 69.21 L 25.37 66.47 M 8.95 67.02 L 22.63 61.35 M 27.2 59.46 L 36.32 55.68 M 11.26 57.72 L 16.11 56.75 M 5.56 50.01 L 15.44 50.01 M 0.86 45.17 L 5.78 45.65 M 6.42 41.34 L 11.26 42.3 M 8.95 33 L 13.51 34.89 M 22.63 38.67 L 36.32 44.34 M 17.16 28.06 L 29.48 36.29 M 18.58 18.58 L 22.07 22.07 M 32.55 32.55 L 36.04 36.04 M 25.32 13.05 L 30.8 21.27 M 26.73 6.46 L 29.06 10.81 M 33 8.95 L 40.56 27.2 M 35.67 2.75 L 37.11 7.48 M 43.27 16.11 L 44.23 20.95" transform="rotate(87.5 50 50)" />
+        <animateTransform id="m1" attributeName="transform" type="rotate" values="0 50 50; 5.5 50 50" dur=".2s" begin="c1.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m2" attributeName="transform" type="rotate" values="5.5 50 50; 22 50 50" dur=".2s" begin="c2.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m3" attributeName="transform" type="rotate" values="22 50 50; 27.5 50 50" dur=".2s" begin="c3.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m4" attributeName="transform" type="rotate" values="27.5 50 50; 33 50 50" dur=".2s" begin="c4.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m5" attributeName="transform" type="rotate" values="33 50 50; 44 50 50" dur=".2s" begin="c5.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m6" attributeName="transform" type="rotate" values="44 50 50; 51 50 50" dur=".2s" begin="c6.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m7" attributeName="transform" type="rotate" values="51 50 50; 31 50 50" dur=".2s" begin="c7.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m8" attributeName="transform" type="rotate" values="31 50 50; 54 50 50" dur=".2s" begin="c8.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m9" attributeName="transform" type="rotate" values="54 50 50; 34 50 50" dur=".2s" begin="c9.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m10" attributeName="transform" type="rotate" values="34 50 50; -4 50 50" dur=".2s" begin="c10.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m11" attributeName="transform" type="rotate" values="-4 50 50; -14 50 50" dur=".2s" begin="c11.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m12" attributeName="transform" type="rotate" values="-14 50 50; -25 50 50" dur=".2s" begin="c12.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m13" attributeName="transform" type="rotate" values="-25 50 50; -34 50 50" dur=".2s" begin="c13.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m14" attributeName="transform" type="rotate" values="-34 50 50; -16 50 50" dur=".2s" begin="c14.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m15" attributeName="transform" type="rotate" values="-16 50 50; -40 50 50" dur=".25s" begin="c15.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m16" attributeName="transform" type="rotate" values="-40 50 50; -45.5 50 50" dur=".2s" begin="c16.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m17" attributeName="transform" type="rotate" values="-45.5 50 50; -51 50 50" dur=".2s" begin="c17.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m18" attributeName="transform" type="rotate" values="-51 50 50; -62 50 50" dur=".2s" begin="c18.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m19" attributeName="transform" type="rotate" values="-62 50 50; -85 50 50" dur=".2s" begin="c19.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m20" attributeName="transform" type="rotate" values="-85 50 50; -101.5 50 50" dur=".2s" begin="c20.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m21" attributeName="transform" type="rotate" values="-101.5 50 50; -162 50 50" dur=".3s" begin="c21.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m22" attributeName="transform" type="rotate" values="-162 50 50; -126.5 50 50" dur=".25s" begin="c22.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m23" attributeName="transform" type="rotate" values="-126.5 50 50; -100 50 50" dur=".2s" begin="c23.end" repeatCount="0" fill="freeze" />
+        <animateTransform id="m24" attributeName="transform" type="rotate" values="-100 50 50; -195 50 50" dur=".3s" begin="c24.end" repeatCount="0" fill="freeze" />
+      </g>
+      <circle cx="99" cy="50" r="1" fill="#00ff41" filter="url(#neon-glow)">
+        <animate id="c1" attributeName="cx" values="99; 97" dur=".2s" begin="0s" repeatCount="0" fill="freeze" />
+        <animate id="c2" attributeName="cx" values="97; 92" dur=".2s" begin="m1.end" repeatCount="0" fill="freeze" />
+        <animate id="c3" attributeName="cx" values="92; 97" dur=".2s" begin="m2.end" repeatCount="0" fill="freeze" />
+        <animate id="c4" attributeName="cx" values="97; 92" dur=".2s" begin="m3.end" repeatCount="0" fill="freeze" />
+        <animate id="c5" attributeName="cx" values="92; 97" dur=".2s" begin="m4.end" repeatCount="0" fill="freeze" />
+        <animate id="c6" attributeName="cx" values="97; 87" dur=".2s" begin="m5.end" repeatCount="0" fill="freeze" />
+        <animate id="c7" attributeName="cx" values="87; 82" dur=".2s" begin="m6.end" repeatCount="0" fill="freeze" />
+        <animate id="c8" attributeName="cx" values="82; 77" dur=".2s" begin="m7.end" repeatCount="0" fill="freeze" />
+        <animate id="c9" attributeName="cx" values="77; 67" dur=".2s" begin="m8.end" repeatCount="0" fill="freeze" />
+        <animate id="c10" attributeName="cx" values="67; 72" dur=".2s" begin="m9.end" repeatCount="0" fill="freeze" />
+        <animate id="c11" attributeName="cx" values="72; 82" dur=".2s" begin="m10.end" repeatCount="0" fill="freeze" />
+        <animate id="c12" attributeName="cx" values="82; 77" dur=".2s" begin="m11.end" repeatCount="0" fill="freeze" />
+        <animate id="c13" attributeName="cx" values="77; 82" dur=".2s" begin="m12.end" repeatCount="0" fill="freeze" />
+        <animate id="c14" attributeName="cx" values="82; 87" dur=".2s" begin="m13.end" repeatCount="0" fill="freeze" />
+        <animate id="c15" attributeName="cx" values="87; 92" dur=".2s" begin="m14.end" repeatCount="0" fill="freeze" />
+        <animate id="c16" attributeName="cx" values="92; 97.5" dur=".2s" begin="m15.end" repeatCount="0" fill="freeze" />
+        <animate id="c17" attributeName="cx" values="97.5; 92" dur=".2s" begin="m16.end" repeatCount="0" fill="freeze" />
+        <animate id="c18" attributeName="cx" values="92; 97.5" dur=".2s" begin="m17.end" repeatCount="0" fill="freeze" />
+        <animate id="c19" attributeName="cx" values="97.5; 92" dur=".2s" begin="m18.end" repeatCount="0" fill="freeze" />
+        <animate id="c20" attributeName="cx" values="92; 97.5" dur=".2s" begin="m19.end" repeatCount="0" fill="freeze" />
+        <animate id="c21" attributeName="cx" values="97.5; 82" dur=".2s" begin="m20.end" repeatCount="0" fill="freeze" />
+        <animate id="c22" attributeName="cx" values="82; 77" dur=".2s" begin="m21.end" repeatCount="0" fill="freeze" />
+        <animate id="c23" attributeName="cx" values="77; 67" dur=".2s" begin="m22.end" repeatCount="0" fill="freeze" />
+        <animate id="c24" attributeName="cx" values="67; 62.5" dur=".2s" begin="m23.end" repeatCount="0" fill="freeze" />
+        <animate id="c25" attributeName="cx" values="62.5; 50" dur=".2s" begin="m24.end" repeatCount="0" fill="freeze" />
+        <animate id="cGrow" attributeName="r" values="1; 9" dur=".8s" begin="c25.end" repeatCount="0" fill="freeze" />
+        <animate id="cOpacity" attributeName="opacity" values="1; 0" dur=".8s" begin="cGrow.end" repeatCount="0" fill="freeze" />
+      </circle>
+    </svg>
+  </div>
+
+  <!-- Cinematic letterbox bars -->
+  <div class="cinematic-bars top" id="barTop"></div>
+  <div class="cinematic-bars bottom" id="barBottom"></div>
+
+  <!-- Wire interaction layer -->
+  <canvas id="wire-canvas"></canvas>
+  <div class="outlet-hint" id="outletHint">PLUG IN</div>
+
+  <!-- Ambient layers -->
+  <canvas id="ambient-canvas"></canvas>
+  <div class="ambient-haze"></div>
+  <div class="global-vignette"></div>
+  <div class="global-scanlines"></div>
+  <div class="crt-flicker"></div>
+
+  <!-- Main Content: TV -->
+  <div id="main-content">
+    <div class="ca-display" id="caDisplay">
+        <span class="ca-label">CA:</span>
+        <span class="ca-address" id="caAddress"></span>
+        <span class="ca-cursor" id="caCursor">_</span>
+        <span class="ca-copied-toast" id="caCopiedToast">copied!</span>
+      </div>
+    <div class="tv-wrap">
+      <div class="tv-cabinet">
+        <div class="tv-bezel">
+          <div class="tv-screen" id="tvScreen" tabindex="0">
+            <canvas id="screen"></canvas>
+            <canvas id="deepdive-canvas"></canvas>
+            <canvas id="donut-canvas"></canvas>
+            <div class="scanlines"></div>
+            <div class="phosphor-glow" id="glow"></div>
+            <div class="screen-glass"></div>
+          </div>
+        </div>
+        <div class="tv-controls">
+          <div class="tv-brand">Petrichor</div>
+          <div class="indicator-row">
+            <div class="led led-off"></div>
+            <span style="font-family:'VT323',monospace;font-size:14px;color:rgba(200,191,173,0.3);letter-spacing:0.1em;">ON AIR</span>
+          </div>
+          <div class="knobs">
+            <div class="knob" id="prevKnob" title="Previous channel"></div>
+            <div class="knob ch-knob" id="nextKnob" title="Next channel"></div>
+          </div>
+        </div>
+      </div>
+      <div class="channel-strip" id="channelStrip"></div>
+      <div class="hint">click knob or channel buttons to switch · space / arrow keys work too</div>
+    </div>
+  </div>
+
+  <!-- Deepdive fragment shader source -->
+  <script id="deepdive-frag" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+out vec4 O;
+uniform float time;
+uniform vec2 resolution;
+#define FC gl_FragCoord.xy
+#define R resolution
+#define T time
+#define MN min(R.x,R.y)
+#define S smoothstep
+#define SE(v,a) S(fwidth(a),-.35,v-a)
+#define PI radians(180.)
+#define lum(a) dot(a,vec3(.21,.71,.07))
+#define hue(a)(.5+.5*sin(PI*(a)+vec3(1,2,3)))
+void main() {
+  O=vec4(0);
+  vec3 bg=vec3(.08);
+  vec2 uv=2.*FC-R, st=(FC-.5*R)/MN;
+  float bs=MN*.05;
+  if ((R.x>R.y) && (abs(st.x)>1. || abs(st.y)>.5)) {
+    O=max(O,vec4(bg,0));
+    return;
+  }
+  uv*=mat2(cos(sin(T*.2)-vec4(0,11,33,0)))*exp(cos(T)*.321)*(.7+.5*cos(T*.5));
+  float d=length(uv)/MN;
+  uv=vec2(log(d),.205+atan(uv.x,uv.y))*8./PI;
+  vec2 p=uv;
+  uv.x+=floor(uv.y*.5)*.5-T*1.5;
+  uv=mod(uv,2.)-1.;
+  p+=sin(T*10.-p*vec2(10,30))*.01;
+  uv*=uv*uv*uv;
+  float l=dot(uv,uv);
+  l=abs(d-SE(l,.2));
+  vec3 col=hue(l*l-T*.5);
+  col=tanh(col*col)/(.01+.25*lum(vec3(distance(cos((p.x-T)*12.),sin(p.y*42.)))));
+  col=sqrt(col);
+  l=dot(abs(uv)/dot(p,4.5*p)-.9,st);
+  col=mix(2.*sqrt(hue(.1+l)/max(l*l*l*l,.1)),col,S(-.5,.5,length((FC-.5*R)/MN)));
+  col/=4.;
+  col=mix(vec3(.85),col,mix(.6,1.,fract(sin(dot(st, vec2(12.9898,78.233)))*345678.)));
+  col=max(col,.1);
+  col=mix(col,vec3(1),S(1e-5,-1e-2,dot(st,st)));
+  vec2 c=FC/R;
+  c*=1.-c.yx;
+  float vig=c.x*c.y*25.;
+  vig=S(.0,1.,pow(vig,.3));
+  col=mix(vec3(lum(col)),col,vig);
+  col=mix(vec3(0),col,vig);
+  col*=vec3(1.2*lum(col));
+  col=sqrt(col);
+  if (R.x>R.y) {
+    if (FC.x > R.x-bs || FC.x < bs || FC.y > R.y-bs || FC.y < bs) {
+      O=max(O,vec4(bg,0));
+      return;
+    }
+  }
+  O=vec4(col,1);
+}</script>
+
+  <!-- Donut fragment shader source -->
+  <script id="donut-frag" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+out vec4 O;
+uniform float time;
+uniform vec2 resolution;
+uniform samplerCube cubeMap;
+#define FC gl_FragCoord.xy
+#define R resolution
+#define T time
+#define N normalize
+#define S smoothstep
+#define MN min(R.x,R.y)
+#define rot(a) mat2(cos((a)-vec4(0,11,33,0)))
+float tor(vec3 p, vec2 s) {
+  vec2 c=vec2(length(p.xy)-s.x,p.z);
+  return length(c)-s.y;
+}
+vec2 map(vec3 p) {
+  vec3 q=p;
+  p.yz*=rot(-T*.4);
+  p.xz*=rot(3.14+T*.2);
+  vec2
+  a=vec2(abs(tor(p,vec2(1,.4)))-.01,1),
+  b=vec2(abs(length(q)-10.)-.05,0);
+  a=a.x<b.x?a:b;
+  return a;
+}
+vec3 norm(vec3 p) {
+  float h=1e-3; vec2 k=vec2(-1,1);
+  return N(
+    k.xyy*map(p+k.xyy*h).x+
+    k.yxy*map(p+k.yxy*h).x+
+    k.yyx*map(p+k.yyx*h).x+
+    k.xxx*map(p+k.xxx*h).x
+  );
+}
+vec3 dir(vec2 uv, vec3 p, vec3 t, float z) {
+  vec3 up=vec3(0,1,0),
+  f=N(t-p),
+  r=N(cross(up,f)),
+  u=N(cross(f,r));
+  return N(mat3(r,u,f)*vec3(uv,z));
+}
+void main() {
+  vec2 uv=(FC-.5*R)/MN;
+  float grain=MN;
+  uv=floor(uv*grain)/grain;
+  vec2 st=uv*.8;
+  vec3 col=vec3(0),
+  p=vec3(0,0,-3.),
+  rd=dir(uv,p,vec3(0),1.-.2*dot(uv,uv));
+  vec3 lp=vec3(-1,2,-3);
+  float dd=.0, at=.0, bnz=.0, side=1.;
+  for (float i=.0; i<400.; i++) {
+    vec2 d=map(p);
+    d.x*side;
+    if (abs(d.x)<1e-3) {
+      vec3 n=norm(p)*side, l=N(lp-p);
+      float dif=clamp(dot(l,n),.0,1.);
+      if (d.y<1.) {
+        rd=reflect(rd,n);
+        rd.xz*=rot(T);
+        col=mix(col,texture(cubeMap,-rd).rgb,.5);
+        break;
+      } else if (bnz++<1.) {
+        vec3 r=reflect(rd,n);
+        r.xz*=rot(T);
+        float fre=clamp(1.+dot(rd,n),.0,1.),
+        spe=pow(clamp(dot(r,l),.0,1.),64.);
+        col+=spe*2.;
+        col+=2.*fre*texture(cubeMap,r).rgb;
+        at*=15.;
+        col+=at*at;
+      }
+      if (dot(l,n)<.0) l=-l;
+      dif=clamp(dot(l,n),.0,1.);
+      float fre=pow(clamp(1.+dot(rd,n),.0,1.),5.);
+      col+=.08+.2*dif+.1*fre;
+      side=-side;
+      vec3 rdo=refract(rd,n,1.+side*.4);
+      if (dot(rdo,rdo)==.0) rdo=reflect(rd,n);
+      rd=rdo;
+      d.x=11e-1;
+    }
+    p+=rd*d.x;
+    dd+=d.x;
+    at+=.05*(.05/dd);
+  }
+  col=S(.0,1.25,col);
+  col=tanh(col)*vec3(1.7,.9,1.1);
+  col=pow(col,vec3(.4545));
+  uv=2.*FC/R-1.;
+  uv*=.8;
+  uv*=uv;
+  float v=dot(uv,uv);
+  col=mix(col,vec3(0),v);
+  O=vec4(col,1);
+}</script>
+
+  <!-- TV logic -->
+  <script src="tv.js"></script>
+
+  <script>
+  // ── Loading screen dismiss ──
+  const cOpacityEl = document.getElementById('cOpacity');
+  const loadingScreen = document.getElementById('loading-screen');
+  const mainContent = document.getElementById('main-content');
+
+  cOpacityEl.addEventListener('endEvent', () => {
+    loadingScreen.classList.add('fade-out');
+    mainContent.classList.add('visible');
+    document.body.classList.add('loaded');
+    loadingScreen.addEventListener('transitionend', () => {
+      loadingScreen.remove();
+    }, { once: true });
+  });
+
+  // ── Matrix-style falling characters ──
+  (function ambientParticles() {
+    const c = document.getElementById('ambient-canvas');
+    const ambCtx = c.getContext('2d');
+
+    function resize() {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF<>/{}[];:'.split('');
+    const fontSize = 14;
+    const columns = Math.floor(c.width / fontSize);
+    const drops = Array.from({ length: columns }, () => Math.random() * -100 | 0);
+
+    function draw() {
+      ambCtx.fillStyle = 'rgba(10, 8, 6, 0.08)';
+      ambCtx.fillRect(0, 0, c.width, c.height);
+      ambCtx.font = fontSize + 'px monospace';
+
+      for (let i = 0; i < drops.length; i++) {
+        const char = chars[Math.random() * chars.length | 0];
+        const x = i * fontSize;
+        const y = drops[i] * fontSize;
+
+        const brightness = Math.random();
+        if (brightness > 0.95) {
+          ambCtx.fillStyle = 'rgba(0, 255, 65, 0.9)';
+        } else if (brightness > 0.8) {
+          ambCtx.fillStyle = 'rgba(0, 200, 50, 0.25)';
+        } else {
+          ambCtx.fillStyle = 'rgba(0, 180, 40, 0.07)';
+        }
+
+        ambCtx.fillText(char, x, y);
+
+        if (y > c.height && Math.random() > 0.985) {
+          drops[i] = 0;
+        }
+        drops[i]++;
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    draw();
+  })();
+
+  // ══════════════════════════════════════════════════════════════════
+  //  WIRE PLUG-IN SYSTEM
+  // ══════════════════════════════════════════════════════════════════
+  (function wireSystem() {
+    const wCanvas = document.getElementById('wire-canvas');
+    const wCtx = wCanvas.getContext('2d');
+    const outletHint = document.getElementById('outletHint');
+
+    let wW, wH;
+    function resizeWire() {
+      wW = wCanvas.width = window.innerWidth;
+      wH = wCanvas.height = window.innerHeight;
+    }
+    resizeWire();
+    window.addEventListener('resize', () => { resizeWire(); if (!pluggedIn) initWire(); });
+
+    const GRAVITY = 0.4;
+    const FRICTION = 0.96;
+    const SEG_LEN = 12;
+    const ITERATIONS = 12;
+    const WIRE_THICKNESS = 3.5;
+    const SNAP_DIST = 35;
+
+    const mouse = { x: wW / 2, y: wH * 0.75 };
+    let pluggedIn = false;
+
+    function getAnchor() {
+      const cab = document.querySelector('.tv-cabinet');
+      if (!cab) return { x: wW / 2, y: wH / 2 + 50 };
+      const r = cab.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.bottom - 5 };
+    }
+
+    function getOutletPos() {
+      return { x: wW * 0.78, y: wH * 0.88 };
+    }
+
+    class Pt {
+      constructor(x, y) {
+        this.x = x; this.y = y;
+        this.ox = x; this.oy = y;
+        this.pinned = false;
+      }
+      update() {
+        if (this.pinned) return;
+        const vx = (this.x - this.ox) * FRICTION;
+        const vy = (this.y - this.oy) * FRICTION;
+        this.ox = this.x; this.oy = this.y;
+        this.x += vx; this.y += vy + GRAVITY;
+        if (this.y >= wH - 2) {
+          this.y = wH - 2;
+          this.ox = this.x - vx * 0.5;
+        }
+      }
+      setPos(x, y) { this.x = x; this.y = y; this.ox = x; this.oy = y; }
+    }
+
+    class Stk {
+      constructor(a, b) { this.a = a; this.b = b; }
+      update() {
+        const dx = this.b.x - this.a.x;
+        const dy = this.b.y - this.a.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const diff = (SEG_LEN - d) / d / 2;
+        const ox = dx * diff, oy = dy * diff;
+        if (!this.a.pinned) { this.a.x -= ox; this.a.y -= oy; }
+        if (!this.b.pinned) { this.b.x += ox; this.b.y += oy; }
+      }
+    }
+
+    let pts = [], stks = [];
+
+    function initWire() {
+      pts = []; stks = [];
+      const anc = getAnchor();
+      const end = { x: mouse.x, y: mouse.y };
+      const dx = end.x - anc.x, dy = end.y - anc.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const total = Math.max(Math.floor(dist * 3 / SEG_LEN), 50);
+
+      for (let i = 0; i <= total; i++) {
+        const t = i / total;
+        const sag = Math.sin(t * Math.PI) * 80;
+        const p = new Pt(anc.x + dx * t, anc.y + dy * t + sag);
+        pts.push(p);
+        if (i > 0) stks.push(new Stk(pts[i - 1], p));
+      }
+      pts[0].pinned = true;
+    }
+
+    function drawOutlet(ox, oy) {
+      wCtx.save();
+      wCtx.fillStyle = '#1a1a1a';
+      wCtx.strokeStyle = '#333';
+      wCtx.lineWidth = 2;
+
+      const w = 44, h = 56, r = 6;
+      wCtx.beginPath();
+      wCtx.roundRect(ox - w / 2, oy - h / 2, w, h, r);
+      wCtx.fill();
+      wCtx.stroke();
+
+      wCtx.fillStyle = '#0a0a0a';
+      wCtx.beginPath();
+      wCtx.roundRect(ox - w / 2 + 4, oy - h / 2 + 4, w - 8, h - 8, r - 2);
+      wCtx.fill();
+
+      wCtx.strokeStyle = '#444';
+      wCtx.lineWidth = 2.5;
+      wCtx.lineCap = 'round';
+      wCtx.beginPath();
+      wCtx.moveTo(ox - 6, oy - 10); wCtx.lineTo(ox - 6, oy - 2);
+      wCtx.stroke();
+      wCtx.beginPath();
+      wCtx.moveTo(ox + 6, oy - 10); wCtx.lineTo(ox + 6, oy - 2);
+      wCtx.stroke();
+
+      wCtx.beginPath();
+      wCtx.arc(ox, oy + 12, 4, 0, Math.PI, false);
+      wCtx.stroke();
+
+      wCtx.restore();
+    }
+
+    function drawPlug(x, y) {
+      wCtx.save();
+      wCtx.fillStyle = '#1a1a14';
+      wCtx.beginPath();
+      wCtx.roundRect(x - 14, y - 20, 28, 28, 4);
+      wCtx.fill();
+
+      wCtx.fillStyle = '#2a2a22';
+      wCtx.beginPath();
+      wCtx.roundRect(x - 10, y - 16, 20, 20, 3);
+      wCtx.fill();
+
+      wCtx.strokeStyle = '#666';
+      wCtx.lineWidth = 2;
+      wCtx.lineCap = 'round';
+      wCtx.beginPath();
+      wCtx.moveTo(x - 4, y + 8); wCtx.lineTo(x - 4, y + 18);
+      wCtx.stroke();
+      wCtx.beginPath();
+      wCtx.moveTo(x + 4, y + 8); wCtx.lineTo(x + 4, y + 18);
+      wCtx.stroke();
+      wCtx.restore();
+    }
+
+    function wireLoop() {
+      if (pluggedIn) return;
+
+      wCtx.clearRect(0, 0, wW, wH);
+
+      const anc = getAnchor();
+      pts[0].setPos(anc.x, anc.y);
+
+      const last = pts[pts.length - 1];
+      last.setPos(mouse.x, mouse.y);
+
+      for (const p of pts) p.update();
+      for (let j = 0; j < ITERATIONS; j++) {
+        for (const s of stks) s.update();
+      }
+
+      wCtx.beginPath();
+      wCtx.strokeStyle = '#222';
+      wCtx.lineWidth = WIRE_THICKNESS;
+      wCtx.lineCap = 'round';
+      wCtx.lineJoin = 'round';
+      wCtx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        wCtx.lineTo(pts[i].x, pts[i].y);
+      }
+      wCtx.stroke();
+
+      const outlet = getOutletPos();
+      drawOutlet(outlet.x, outlet.y);
+
+      outletHint.style.left = (outlet.x - 30) + 'px';
+      outletHint.style.top = (outlet.y - 50) + 'px';
+
+      drawPlug(mouse.x, mouse.y);
+
+      const dx = mouse.x - outlet.x;
+      const dy = mouse.y - outlet.y;
+      if (Math.sqrt(dx * dx + dy * dy) < SNAP_DIST) {
+        plugIn(outlet);
+        return;
+      }
+
+      requestAnimationFrame(wireLoop);
+    }
+
+    function plugIn(outlet) {
+      pluggedIn = true;
+
+      const anc = getAnchor();
+      pts[pts.length - 1].setPos(outlet.x, outlet.y - 5);
+      pts[pts.length - 1].pinned = true;
+      pts[0].setPos(anc.x, anc.y);
+
+      let settleFrames = 0;
+      function settle() {
+        wCtx.clearRect(0, 0, wW, wH);
+        const a = getAnchor();
+        pts[0].setPos(a.x, a.y);
+        for (const p of pts) p.update();
+        for (let j = 0; j < ITERATIONS; j++) {
+          for (const s of stks) s.update();
+        }
+
+        wCtx.beginPath();
+        wCtx.strokeStyle = '#222';
+        wCtx.lineWidth = WIRE_THICKNESS;
+        wCtx.lineCap = 'round';
+        wCtx.lineJoin = 'round';
+        wCtx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          wCtx.lineTo(pts[i].x, pts[i].y);
+        }
+        wCtx.stroke();
+        drawOutlet(outlet.x, outlet.y);
+
+        settleFrames++;
+        if (settleFrames < 90) {
+          requestAnimationFrame(settle);
+        } else {
+          outletHint.classList.add('hidden');
+          setTimeout(() => {
+            wCanvas.classList.add('hidden');
+            window.powerOnTV();
+            if (window.startCAAnimation) window.startCAAnimation();
+            autoTimer = setInterval(next, 6000);
+            visitedChannels.add(0);
+          }, 400);
+        }
+      }
+      settle();
+    }
+
+    wCanvas.addEventListener('mousemove', e => {
+      if (!pluggedIn) { mouse.x = e.clientX; mouse.y = e.clientY; }
+    });
+    wCanvas.addEventListener('touchmove', e => {
+      if (!pluggedIn) {
+        mouse.x = e.touches[0].clientX;
+        mouse.y = e.touches[0].clientY;
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    setTimeout(() => {
+      initWire();
+      wireLoop();
+    }, 500);
+  })();
+
+  // ══════════════════════════════════════════════════════════════════
+  //  CA ADDRESS TERMINAL ANIMATION
+  // ══════════════════════════════════════════════════════════════════
+
+  (function caAnimation() {
+    const CA_STRING = 'fb2Le74Vf5XEJ9p3iXExRPtSqksLjLKc4gexzPhpump';
+    const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const caDisplay = document.getElementById('caDisplay');
+    const caAddress = document.getElementById('caAddress');
+    const caCursor = document.getElementById('caCursor');
+
+    for (let i = 0; i < CA_STRING.length; i++) {
+      const span = document.createElement('span');
+      span.className = 'ca-char';
+      span.textContent = CA_STRING[i];
+      span.dataset.index = i;
+      span.dataset.target = CA_STRING[i];
+      caAddress.appendChild(span);
+    }
+
+    caDisplay.addEventListener('click', () => {
+      navigator.clipboard.writeText(CA_STRING).then(() => {
+        const toast = document.getElementById('caCopiedToast');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 1500);
+      });
+    });
+
+    window.startCAAnimation = function() {
+      caDisplay.classList.add('visible');
+
+      const chars = caAddress.querySelectorAll('.ca-char');
+      let currentIndex = 0;
+
+      function animateNext() {
+        if (currentIndex >= chars.length) {
+          setTimeout(() => { caCursor.style.display = 'none'; }, 600);
+          return;
+        }
+
+        const charEl = chars[currentIndex];
+        const target = charEl.dataset.target;
+        let scrambleCount = 0;
+        const maxScrambles = 3 + Math.floor(Math.random() * 4);
+
+        charEl.classList.add('scrambling');
+        charEl.style.opacity = '0.6';
+
+        const scrambleInterval = setInterval(() => {
+          charEl.textContent = CHARS[Math.floor(Math.random() * CHARS.length)];
+          scrambleCount++;
+
+          if (scrambleCount >= maxScrambles) {
+            clearInterval(scrambleInterval);
+            charEl.textContent = target;
+            charEl.classList.remove('scrambling');
+            charEl.classList.add('landed');
+            currentIndex++;
+            const delay = 25 + Math.random() * 35;
+            setTimeout(animateNext, delay);
+          }
+        }, 40);
+      }
+
+      setTimeout(animateNext, 400);
+    };
+  })();
+
+  // ══════════════════════════════════════════════════════════════════
+  //  CINEMATIC DEEPDIVE SEQUENCE
+  // ══════════════════════════════════════════════════════════════════
+
+  let ddGl = null;
+  let ddProgram = null;
+  let ddAnimFrame = null;
+  let ddStartTime = 0;
+
+  function initDeepDiveGL() {
+    const ddCanvas = document.getElementById('deepdive-canvas');
+    const rect = document.getElementById('tvScreen').getBoundingClientRect();
+    ddCanvas.width = rect.width * window.devicePixelRatio;
+    ddCanvas.height = rect.height * window.devicePixelRatio;
+
+    const gl = ddCanvas.getContext('webgl2', { antialias: false, alpha: false });
+    if (!gl) return null;
+
+    const vertSrc = `#version 300 es
+    in vec4 position;
+    void main() { gl_Position = position; }`;
+
+    const fragSrc = document.getElementById('deepdive-frag').textContent;
+
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        return null;
+      }
+      return s;
+    }
+
+    const vs = compile(gl.VERTEX_SHADER, vertSrc);
+    const fs = compile(gl.FRAGMENT_SHADER, fragSrc);
+    if (!vs || !fs) return null;
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(prog));
+      return null;
+    }
+
+    gl.useProgram(prog);
+
+    const verts = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    const posLoc = gl.getAttribLocation(prog, 'position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    ddGl = gl;
+    ddProgram = prog;
+    return gl;
+  }
+
+  function renderDeepDive() {
+    if (!ddGl) return;
+    const gl = ddGl;
+    const elapsed = (performance.now() - ddStartTime) / 1000;
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.uniform1f(gl.getUniformLocation(ddProgram, 'time'), elapsed);
+    gl.uniform2f(gl.getUniformLocation(ddProgram, 'resolution'), gl.canvas.width, gl.canvas.height);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    ddAnimFrame = requestAnimationFrame(renderDeepDive);
+  }
+
+  function startDeepDiveShader() {
+    if (!initDeepDiveGL()) return;
+    ddStartTime = performance.now();
+    const ddCanvas = document.getElementById('deepdive-canvas');
+    ddCanvas.classList.add('active');
+    renderDeepDive();
+  }
+
+  function stopDeepDiveShader() {
+    if (ddAnimFrame) cancelAnimationFrame(ddAnimFrame);
+    ddAnimFrame = null;
+    const ddCanvas = document.getElementById('deepdive-canvas');
+    ddCanvas.classList.remove('active');
+    if (ddGl) {
+      ddGl.getExtension('WEBGL_lose_context')?.loseContext();
+      ddGl = null;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  DONUT SHADER
+  // ══════════════════════════════════════════════════════════════════
+  let dnGl = null;
+  let dnProgram = null;
+  let dnAnimFrame = null;
+  let dnStartTime = 0;
+
+  function loadCubeMap(gl) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
+    const imgpath = 'https://assets.codepen.io/4386748';
+    const faces = [
+      [gl.TEXTURE_CUBE_MAP_POSITIVE_X, '03posx.jpg'],
+      [gl.TEXTURE_CUBE_MAP_NEGATIVE_X, '03negx.jpg'],
+      [gl.TEXTURE_CUBE_MAP_POSITIVE_Y, '03posy.jpg'],
+      [gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, '03negy.jpg'],
+      [gl.TEXTURE_CUBE_MAP_POSITIVE_Z, '03posz.jpg'],
+      [gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, '03negz.jpg'],
+    ];
+    for (const [target, url] of faces) {
+      gl.texImage2D(target, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
+        gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      };
+      img.src = `${imgpath}/${url}?width=512&height=512&format=auto`;
+    }
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return tex;
+  }
+
+  function initDonutGL() {
+    const dnCanvas = document.getElementById('donut-canvas');
+    const rect = document.getElementById('tvScreen').getBoundingClientRect();
+    dnCanvas.width = rect.width * window.devicePixelRatio;
+    dnCanvas.height = rect.height * window.devicePixelRatio;
+
+    const gl = dnCanvas.getContext('webgl2', { antialias: false, alpha: false });
+    if (!gl) return null;
+
+    const vertSrc = `#version 300 es
+    in vec4 position;
+    void main() { gl_Position = position; }`;
+
+    const fragSrc = document.getElementById('donut-frag').textContent;
+
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        return null;
+      }
+      return s;
+    }
+
+    const vs = compile(gl.VERTEX_SHADER, vertSrc);
+    const fs = compile(gl.FRAGMENT_SHADER, fragSrc);
+    if (!vs || !fs) return null;
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(prog));
+      return null;
+    }
+
+    gl.useProgram(prog);
+
+    const verts = new Float32Array([-1,1, -1,-1, 1,1, 1,-1]);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    const posLoc = gl.getAttribLocation(prog, 'position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    loadCubeMap(gl);
+    gl.uniform1i(gl.getUniformLocation(prog, 'cubeMap'), 0);
+
+    dnGl = gl;
+    dnProgram = prog;
+    return gl;
+  }
+
+  function renderDonut() {
+    if (!dnGl) return;
+    const gl = dnGl;
+    const elapsed = (performance.now() - dnStartTime) / 1000;
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.uniform1f(gl.getUniformLocation(dnProgram, 'time'), elapsed);
+    gl.uniform2f(gl.getUniformLocation(dnProgram, 'resolution'), gl.canvas.width, gl.canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    dnAnimFrame = requestAnimationFrame(renderDonut);
+  }
+
+  function startDonutShader() {
+    if (!initDonutGL()) return;
+    dnStartTime = performance.now();
+    document.getElementById('donut-canvas').classList.add('active');
+    renderDonut();
+  }
+
+  function stopDonutShader() {
+    if (dnAnimFrame) cancelAnimationFrame(dnAnimFrame);
+    dnAnimFrame = null;
+    document.getElementById('donut-canvas').classList.remove('active');
+    if (dnGl) {
+      dnGl.getExtension('WEBGL_lose_context')?.loseContext();
+      dnGl = null;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  CINEMATIC ORCHESTRATION
+  // ══════════════════════════════════════════════════════════════════
+  window.onAllChannelsVisited = function () {
+    const tvWrap = document.querySelector('.tv-wrap');
+    const screenEl = document.getElementById('tvScreen');
+    const channelStrip = document.querySelector('.channel-strip');
+    const hint = document.querySelector('.hint');
+    const tvControls = document.querySelector('.tv-controls');
+    const barTop = document.getElementById('barTop');
+    const barBottom = document.getElementById('barBottom');
+    const ambientLayers = document.querySelectorAll('.ambient-haze, #ambient-canvas, .global-scanlines, .crt-flicker');
+
+    staticBurst = 1.0;
+
+    const caDisplayEl = document.getElementById('caDisplay');
+
+    // Phase 1: Hide UI, cinematic bars, fade ambient
+    setTimeout(() => {
+      channelStrip.classList.add('cinematic-hide');
+      hint.classList.add('cinematic-hide');
+      tvControls.classList.add('cinematic-hide');
+      if (caDisplayEl) caDisplayEl.classList.add('cinematic-hide');
+      barTop.classList.add('active');
+      barBottom.classList.add('active');
+      ambientLayers.forEach(el => el.classList.add('ambient-fade-out'));
+    }, 200);
+
+    // Phase 2: Zoom IN
+    setTimeout(() => {
+      const screenRect = screenEl.getBoundingClientRect();
+      const wrapRect = tvWrap.getBoundingClientRect();
+      const originX = screenRect.left - wrapRect.left + screenRect.width / 2;
+      const originY = screenRect.top - wrapRect.top + screenRect.height / 2;
+      const scaleX = window.innerWidth / screenRect.width;
+      const scaleY = window.innerHeight / screenRect.height;
+      const scale = Math.max(scaleX, scaleY) * 1.08;
+
+      tvWrap.classList.add('cinematic-zoom');
+      tvWrap.style.transformOrigin = `${originX}px ${originY}px`;
+      requestAnimationFrame(() => {
+        tvWrap.classList.add('cinematic-ready');
+        requestAnimationFrame(() => {
+          tvWrap.style.transform = `scale(${scale})`;
+        });
+      });
+    }, 800);
+
+    // Phase 3: Deepdive shader (t+3.2s, plays ~10s)
+    setTimeout(() => {
+      staticBurst = 1.0;
+      setTimeout(() => startDeepDiveShader(), 300);
+    }, 3200);
+
+    // Phase 4: Transition deepdive -> donut (t+13.5s)
+    setTimeout(() => {
+      staticBurst = 1.0;
+      startDonutShader();
+      setTimeout(() => stopDeepDiveShader(), 100);
+    }, 13500);
+
+    // Phase 5: Stop donut + zoom OUT (t+23.5s = 10s of donut)
+    setTimeout(() => {
+      stopDonutShader();
+      staticBurst = 1.0;
+
+      setTimeout(() => {
+        tvWrap.classList.remove('cinematic-ready');
+        tvWrap.classList.add('cinematic-zoom-out');
+        requestAnimationFrame(() => { tvWrap.style.transform = ''; });
+
+        barTop.classList.remove('active');
+        barTop.classList.add('retract');
+        barBottom.classList.remove('active');
+        barBottom.classList.add('retract');
+
+        ambientLayers.forEach(el => {
+          el.classList.remove('ambient-fade-out');
+          el.classList.add('ambient-fade-in');
+        });
+      }, 400);
+
+      // Phase 6: Restore UI (t+26.5s)
+      setTimeout(() => {
+        channelStrip.classList.remove('cinematic-hide');
+        channelStrip.classList.add('cinematic-show');
+        hint.classList.remove('cinematic-hide');
+        hint.classList.add('cinematic-show');
+        tvControls.classList.remove('cinematic-hide');
+        tvControls.classList.add('cinematic-show');
+        if (caDisplayEl) { caDisplayEl.classList.remove('cinematic-hide'); }
+
+        setTimeout(() => {
+          tvWrap.classList.remove('cinematic-zoom', 'cinematic-zoom-out');
+          tvWrap.style.transformOrigin = '';
+          channelStrip.classList.remove('cinematic-show');
+          hint.classList.remove('cinematic-show');
+          tvControls.classList.remove('cinematic-show');
+          barTop.classList.remove('retract');
+          barBottom.classList.remove('retract');
+          ambientLayers.forEach(el => el.classList.remove('ambient-fade-in'));
+          deepDiveActive = false;
+        }, 2500);
+      }, 3000);
+    }, 23500);
+  };
+  </script>
+</body>
+</html>
